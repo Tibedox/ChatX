@@ -2,6 +2,7 @@ package ru.tibedox.chatx;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
@@ -33,6 +34,8 @@ public class ChatActivity extends AppCompatActivity {
     Retrofit retrofit;
     MyApi myApi;
     int numMessages;
+    Runnable repeatUpdateList;
+    Handler handler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +59,17 @@ public class ChatActivity extends AppCompatActivity {
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
         myApi = retrofit.create(MyApi.class);
+
+        handler = new Handler();
+        repeatUpdateList = new Runnable() {
+            @Override
+            public void run() {
+                getFromDataBase();
+                updateListView();
+                handler.postDelayed(this, 1000);
+            }
+        };
+        handler.post(repeatUpdateList);
     }
 
     public void sendChatMessage(View view){
@@ -65,11 +79,25 @@ public class ChatActivity extends AppCompatActivity {
         editMessage.setText("");
     }
 
+    private void getFromDataBase() {
+        myApi.sendQuery("ask").enqueue(new Callback<List<DataFromBase>>() {
+            @Override
+            public void onResponse(Call<List<DataFromBase>> call, Response<List<DataFromBase>> response) {
+                db = response.body();
+            }
+
+            @Override
+            public void onFailure(Call<List<DataFromBase>> call, Throwable t) {
+            }
+        });
+    }
+
     private void sendToDataBase() {
         myApi.sendQuery(name, message).enqueue(new Callback<List<DataFromBase>>() {
             @Override
             public void onResponse(Call<List<DataFromBase>> call, Response<List<DataFromBase>> response) {
                 db = response.body();
+                getFromDataBase();
                 updateListView();
             }
 
@@ -85,8 +113,21 @@ public class ChatActivity extends AppCompatActivity {
             for(DataFromBase a: db) allMessages.add(a.name+"     "+a.created+"\n"+a.message);
             ArrayAdapter<String> adapter = new ArrayAdapter<>(getBaseContext(), android.R.layout.simple_list_item_1, allMessages);
             listView.setAdapter(adapter);
-            //scrollDown();
+            scrollDown();
             numMessages=db.size();
         }
+    }
+
+    void scrollDown(){
+        int itemCount = listView.getAdapter().getCount();
+        if (itemCount > 0) {
+            listView.setSelection(itemCount - 1);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        handler.removeCallbacks(repeatUpdateList);
     }
 }
